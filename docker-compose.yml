@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    networks:
+      - app-network
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - STARK_BANK_PRIVATE_KEY=/app/secrets/private-key.pem
+    volumes:
+      - .:/app
+      - ~/starkbank/private-key.pem:/app/secrets/private-key.pem:ro
+      - ~/starkbank/public-key.pem:/app/secrets/public-key.pem:ro
+
+  worker:
+    build: .
+    container_name: worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    command: celery -A app.infrastructure.tasks.scheduler_tasks worker --loglevel=info
+
+  scheduler:
+    build: .
+    container_name: scheduler
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    command: celery -A app.infrastructure.tasks.scheduler_tasks beat --loglevel=info
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  app-network:
+    driver: bridge
